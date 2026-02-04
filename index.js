@@ -84,25 +84,29 @@ async function kayitMesajiGonder(channel) {
 
 /* ================== LİSTE GÜNCELLE ================== */
 async function kayitListesiniGuncelle(channel) {
-  db.all("SELECT userId FROM kayitlar", async (err, rows) => {
-    if (err) return console.error(err);
+  db.all(
+    // 🔥 EKLENEN KISIM: rowid ile kayıt sırası korunur
+    "SELECT userId FROM kayitlar ORDER BY rowid ASC",
+    async (err, rows) => {
+      if (err) return console.error(err);
 
-    let liste = "Henüz kayıt yok.";
+      let liste = "Henüz kayıt yok.";
 
-    if (rows.length > 0) {
-      const emojiler = ["🥇", "🥈", "🥉"];
-      liste = rows
-        .map((u, i) => `${emojiler[i] || "▫️"} ${i + 1}. <@${u.userId}>`)
-        .join("\n");
+      if (rows.length > 0) {
+        const emojiler = ["🥇", "🥈", "🥉"];
+        liste = rows
+          .map((u, i) => `${emojiler[i] || "▫️"} ${i + 1}. <@${u.userId}>`)
+          .join("\n");
+      }
+
+      const doluMu = rows.length >= MAX_KAYIT;
+      const embed = kayitEmbedOlustur(liste, rows.length);
+      const row = butonlariOlustur(doluMu);
+
+      const mesaj = await channel.messages.fetch(kayitMesajId);
+      await mesaj.edit({ embeds: [embed], components: [row] });
     }
-
-    const doluMu = rows.length >= MAX_KAYIT;
-    const embed = kayitEmbedOlustur(liste, rows.length);
-    const row = butonlariOlustur(doluMu);
-
-    const mesaj = await channel.messages.fetch(kayitMesajId);
-    await mesaj.edit({ embeds: [embed], components: [row] });
-  });
+  );
 }
 
 /* ================== BOT AÇILDI ================== */
@@ -114,13 +118,13 @@ client.once("ready", () => {
     const saat = simdi.getHours();
     const dakika = simdi.getMinutes();
 
-    // HER SAAT 17. DAKİKADA
+    // HER SAAT 57. DAKİKADA
     if (dakika === 57 && sonGonderilenSaat !== saat) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         await kayitMesajiGonder(channel);
         sonGonderilenSaat = saat;
-        console.log(`📋 Kayıt mesajı gönderildi (${saat}:17)`);
+        console.log(`📋 Kayıt mesajı gönderildi (${saat}:57)`);
       } catch (err) {
         console.error("❌ Kayıt mesajı hatası:", err);
       }
