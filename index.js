@@ -107,7 +107,7 @@ client.once("ready", () => {
     const saat = simdi.getHours();
     const dakika = simdi.getMinutes();
 
-    if (dakika === 55 && sonGonderilenSaat !== saat) {
+    if (dakika === 17 && sonGonderilenSaat !== saat) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         await kayitMesajiGonder(channel);
