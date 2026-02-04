@@ -10,7 +10,7 @@ const {
 const sqlite3 = require("sqlite3").verbose();
 
 /* ================== AYARLAR ================== */
-const CHANNEL_ID = "1429871190234628146"; // SADECE ID
+const CHANNEL_ID = "1429871190234628146"; // Kanal ID
 const MAX_KAYIT = 10;
 /* ============================================= */
 
@@ -20,6 +20,7 @@ if (!process.env.DISCORD_TOKEN) {
   process.exit(1);
 }
 
+/* ================== DATABASE ================== */
 const db = new sqlite3.Database("./kayitlar.db");
 
 db.run(`
@@ -29,35 +30,40 @@ CREATE TABLE IF NOT EXISTS kayitlar (
 )
 `);
 
+/* ================== CLIENT ================== */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
-/* ======= KAYIT MESAJ ID ======= */
+/* ================== GLOBAL ================== */
 let kayitMesajId = null;
 let sonGonderilenSaat = null;
 
 /* ================== EMBED ================== */
-function kayitEmbedOlustur(liste) {
+function kayitEmbedOlustur(liste, sayi) {
   return new EmbedBuilder()
     .setTitle("📋 Informal Kayıt Sistemi")
     .setDescription(
-      `İlk **${MAX_KAYIT}** kişi kayıt olabilir.\n\n` +
+      `İlk **${MAX_KAYIT}** kişi kayıt olabilir.\n` +
+      `**📊 Durum:** ${sayi}/${MAX_KAYIT}\n\n` +
       `**📌 Kayıtlı Kişiler:**\n${liste}`
     )
-    .setColor("Green");
+    .setColor(sayi >= MAX_KAYIT ? "Red" : "Green");
 }
 
-function butonlariOlustur() {
+/* ================== BUTONLAR ================== */
+function butonlariOlustur(kilitli = false) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("kayit")
       .setLabel("✅ Kayıt Ol")
-      .setStyle(ButtonStyle.Success),
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(kilitli),
     new ButtonBuilder()
       .setCustomId("kayit_iptal")
       .setLabel("❌ Kayıt İptal")
       .setStyle(ButtonStyle.Danger)
+      .setDisabled(kilitli)
   );
 }
 
@@ -65,8 +71,8 @@ function butonlariOlustur() {
 async function kayitMesajiGonder(channel) {
   db.run("DELETE FROM kayitlar");
 
-  const embed = kayitEmbedOlustur("Henüz kayıt yok.");
-  const row = butonlariOlustur();
+  const embed = kayitEmbedOlustur("Henüz kayıt yok.", 0);
+  const row = butonlariOlustur(false);
 
   const mesaj = await channel.send({
     embeds: [embed],
@@ -79,19 +85,20 @@ async function kayitMesajiGonder(channel) {
 /* ================== LİSTE GÜNCELLE ================== */
 async function kayitListesiniGuncelle(channel) {
   db.all("SELECT userId FROM kayitlar", async (err, rows) => {
+    if (err) return console.error(err);
+
     let liste = "Henüz kayıt yok.";
 
     if (rows.length > 0) {
+      const emojiler = ["🥇", "🥈", "🥉"];
       liste = rows
-        .map((u, i) => {
-          const emojiler = ["🥇", "🥈", "🥉"];
-          return `${emojiler[i] || "▫️"} ${i + 1}. <@${u.userId}>`;
-        })
+        .map((u, i) => `${emojiler[i] || "▫️"} ${i + 1}. <@${u.userId}>`)
         .join("\n");
     }
 
-    const embed = kayitEmbedOlustur(liste);
-    const row = butonlariOlustur();
+    const doluMu = rows.length >= MAX_KAYIT;
+    const embed = kayitEmbedOlustur(liste, rows.length);
+    const row = butonlariOlustur(doluMu);
 
     const mesaj = await channel.messages.fetch(kayitMesajId);
     await mesaj.edit({ embeds: [embed], components: [row] });
@@ -107,12 +114,13 @@ client.once("ready", () => {
     const saat = simdi.getHours();
     const dakika = simdi.getMinutes();
 
+    // HER SAAT 17. DAKİKADA
     if (dakika === 17 && sonGonderilenSaat !== saat) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         await kayitMesajiGonder(channel);
         sonGonderilenSaat = saat;
-        console.log(`📋 Kayıt mesajı gönderildi: ${saat}:55`);
+        console.log(`📋 Kayıt mesajı gönderildi (${saat}:17)`);
       } catch (err) {
         console.error("❌ Kayıt mesajı hatası:", err);
       }
@@ -120,7 +128,7 @@ client.once("ready", () => {
   }, 60 * 1000);
 });
 
-/* ================== BUTONLAR ================== */
+/* ================== BUTON EVENT ================== */
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
