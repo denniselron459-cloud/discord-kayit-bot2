@@ -44,7 +44,8 @@ function kayitEmbedOlustur(liste, sayi) {
   return new EmbedBuilder()
     .setTitle("📋 Informal Kayıt")
     .setDescription(
-      `İlk **${MAX_KAYIT}** kişi kayıt olabilir | **📊 Durum:** ${sayi}/${MAX_KAYIT}\n\n` +
+      `İlk **${MAX_KAYIT}** kişi kayıt olabilir.\n` +
+      `**📊 Durum:** ${sayi}/${MAX_KAYIT}\n\n` +
       `**📌 Kayıtlı Kişiler:**\n${liste}`
     )
     .setColor(sayi >= MAX_KAYIT ? "Red" : "Green");
@@ -120,7 +121,7 @@ client.once("ready", () => {
     const dakika = simdi.getMinutes();
 
     // ⏰ HER SAAT 30 GEÇE KAYIT AÇ
-    if (dakika === 51 && sonGonderilenSaat !== saat) {
+    if (dakika === 55 && sonGonderilenSaat !== saat) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         await kayitMesajiGonder(channel);
@@ -132,7 +133,7 @@ client.once("ready", () => {
     }
 
     // ⛔ 45'TEN SONRA KAYDI KAPAT
-    if (dakika >= 55 && kayitMesajId) {
+    if (dakika >= 58 && kayitMesajId) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         const mesaj = await channel.messages.fetch(kayitMesajId);
