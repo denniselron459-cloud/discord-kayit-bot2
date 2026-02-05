@@ -120,7 +120,7 @@ client.once("ready", () => {
     const dakika = simdi.getMinutes();
 
     // ⏰ HER SAAT 30 GEÇE KAYIT AÇ
-    if (dakika === 36 && sonGonderilenSaat !== saat) {
+    if (dakika === 51 && sonGonderilenSaat !== saat) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         await kayitMesajiGonder(channel);
@@ -132,7 +132,7 @@ client.once("ready", () => {
     }
 
     // ⛔ 45'TEN SONRA KAYDI KAPAT
-    if (dakika >= 45 && kayitMesajId) {
+    if (dakika >= 55 && kayitMesajId) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         const mesaj = await channel.messages.fetch(kayitMesajId);
