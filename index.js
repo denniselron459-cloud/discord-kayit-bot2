@@ -10,7 +10,7 @@ const {
 const sqlite3 = require("sqlite3").verbose();
 
 /* ================== AYARLAR ================== */
-const CHANNEL_ID = "1429871190234628146"; // Kanal ID
+const CHANNEL_ID = "1429871190234628146";
 const MAX_KAYIT = 10;
 /* ============================================= */
 
@@ -85,7 +85,6 @@ async function kayitMesajiGonder(channel) {
 /* ================== LİSTE GÜNCELLE ================== */
 async function kayitListesiniGuncelle(channel) {
   db.all(
-    // 🔥 EKLENEN KISIM: rowid ile kayıt sırası korunur
     "SELECT userId FROM kayitlar ORDER BY rowid ASC",
     async (err, rows) => {
       if (err) return console.error(err);
@@ -94,8 +93,12 @@ async function kayitListesiniGuncelle(channel) {
 
       if (rows.length > 0) {
         const emojiler = ["🥇", "🥈", "🥉"];
+
         liste = rows
-          .map((u, i) => `${emojiler[i] || "▫️"} ${i + 1}. <@${u.userId}>`)
+          .map(
+            (u, i) =>
+              `${i + 1}/${MAX_KAYIT} ${emojiler[i] || "▫️"} <@${u.userId}>`
+          )
           .join("\n");
       }
 
@@ -118,13 +121,13 @@ client.once("ready", () => {
     const saat = simdi.getHours();
     const dakika = simdi.getMinutes();
 
-    // HER SAAT 57. DAKİKADA
+    // HER SAAT 45. DAKİKADA
     if (dakika === 45 && sonGonderilenSaat !== saat) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         await kayitMesajiGonder(channel);
         sonGonderilenSaat = saat;
-        console.log(`📋 Kayıt mesajı gönderildi (${saat}:57)`);
+        console.log(`📋 Kayıt mesajı gönderildi (${saat}:45)`);
       } catch (err) {
         console.error("❌ Kayıt mesajı hatası:", err);
       }
