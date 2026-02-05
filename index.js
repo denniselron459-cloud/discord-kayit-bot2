@@ -93,7 +93,6 @@ async function kayitListesiniGuncelle(channel) {
 
       if (rows.length > 0) {
         const emojiler = ["🥇", "🥈", "🥉"];
-
         liste = rows
           .map(
             (u, i) =>
@@ -121,16 +120,31 @@ client.once("ready", () => {
     const saat = simdi.getHours();
     const dakika = simdi.getMinutes();
 
-    // HER SAAT 45. DAKİKADA
-    if (dakika === 45 && sonGonderilenSaat !== saat) {
+    // ⏰ HER SAAT 30 GEÇE KAYIT AÇ
+    if (dakika === 59 && sonGonderilenSaat !== saat) {
       try {
         const channel = await client.channels.fetch(CHANNEL_ID);
         await kayitMesajiGonder(channel);
         sonGonderilenSaat = saat;
-        console.log(`📋 Kayıt mesajı gönderildi (${saat}:45)`);
+        console.log(`📋 Kayıt mesajı gönderildi (${saat}:30)`);
       } catch (err) {
         console.error("❌ Kayıt mesajı hatası:", err);
       }
+    }
+
+    // ⛔ 45'TEN SONRA KAYDI KAPAT
+    if (dakika >= 45 && kayitMesajId) {
+      try {
+        const channel = await client.channels.fetch(CHANNEL_ID);
+        const mesaj = await channel.messages.fetch(kayitMesajId);
+
+        await mesaj.edit({
+          components: [butonlariOlustur(true)],
+        });
+
+        kayitMesajId = null; // aktif kayıt bitti
+        console.log("⛔ Kayıt kapatıldı");
+      } catch {}
     }
   }, 60 * 1000);
 });
@@ -141,9 +155,10 @@ client.on("interactionCreate", async (interaction) => {
 
   const userId = interaction.user.id;
 
-  if (!kayitMesajId) {
+  // ❌ ESKİ MESAJLAR ÇALIŞMASIN
+  if (interaction.message.id !== kayitMesajId) {
     return interaction.reply({
-      content: "❌ Aktif kayıt yok.",
+      content: "❌ Bu kayıt süresi sona ermiştir.",
       ephemeral: true,
     });
   }
