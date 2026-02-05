@@ -42,7 +42,7 @@ let sonGonderilenSaat = null;
 /* ================== EMBED ================== */
 function kayitEmbedOlustur(liste, sayi) {
   return new EmbedBuilder()
-    .setTitle("📋 Informal Kayıt Sistemi")
+    .setTitle("📋 Informal Kayıt")
     .setDescription(
       `İlk **${MAX_KAYIT}** kişi kayıt olabilir.\n` +
       `**📊 Durum:** ${sayi}/${MAX_KAYIT}\n\n` +
