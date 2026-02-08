@@ -1,3 +1,22 @@
+function enYakinUyeyiBul(guild, isim) {
+  const hedef = isim.toLowerCase();
+
+  let adaylar = guild.members.cache.filter(m => {
+    const dn = m.displayName.toLowerCase();
+    const un = m.user.username.toLowerCase();
+
+    return dn.includes(hedef) || un.includes(hedef);
+  });
+
+  if (adaylar.size === 0) return null;
+
+  // en kısa ismi olanı seç (en yakın eşleşme)
+  return adaylar
+    .sort((a, b) =>
+      a.displayName.length - b.displayName.length
+    )
+    .first();
+}
 const { Client, GatewayIntentBits } = require("discord.js");
 
 const client = new Client({
