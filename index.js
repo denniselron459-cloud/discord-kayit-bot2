@@ -4,8 +4,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -15,7 +14,7 @@ const YETKILI_ROL_IDS = [
   "1454564464727949493"
 ];
 
-// 📌 REFERANS MESAJ (Furi'nin yaptığı hesaplama)
+// 📌 Furi'nin hesaplama yaptığı REFERANS mesaj ID
 const REFERANS_MESAJ_ID = "1467279907766927588";
 
 // 💰 Kill başı para
@@ -29,32 +28,24 @@ client.on("messageCreate", async (message) => {
   try {
     if (message.author.bot) return;
     if (!message.guild) return;
-    if (!message.content.toLowerCase().startsWith("!bonushesapla")) return;
+    if (message.content !== "!bonushesapla") return;
 
     // 🔒 Yetki kontrolü
     const member = await message.guild.members.fetch(message.author.id);
-    const yetkiliMi = member.roles.cache.some(role =>
-      YETKILI_ROL_IDS.includes(role.id)
+    const yetkiliMi = member.roles.cache.some(r =>
+      YETKILI_ROL_IDS.includes(r.id)
     );
 
     if (!yetkiliMi) {
       return message.reply("❌ Bu komutu kullanamazsın.");
     }
 
-    // 👥 TÜM ÜYELERİ AL (etiket için)
-    const tumUyeler = await message.guild.members.fetch();
-
-    // 📥 Son 200 mesaj
+    // 📥 Mesajları çek
     const mesajlar = await message.channel.messages.fetch({ limit: 200 });
 
-    // 📌 Referans mesaj
-    let referansMesaj = mesajlar.get(REFERANS_MESAJ_ID);
+    const referansMesaj = mesajlar.get(REFERANS_MESAJ_ID);
     if (!referansMesaj) {
-      try {
-        referansMesaj = await message.channel.messages.fetch(REFERANS_MESAJ_ID);
-      } catch {
-        return message.reply("❌ Referans mesaj bulunamadı.");
-      }
+      return message.reply("❌ Referans mesaj bulunamadı. ID yanlış olabilir.");
     }
 
     const killMap = new Map();
@@ -71,6 +62,7 @@ client.on("messageCreate", async (message) => {
 
         const isim = eslesme[1].trim().toLowerCase();
         const kill = parseInt(eslesme[2]);
+        if (isNaN(kill)) continue;
 
         killMap.set(isim, (killMap.get(isim) || 0) + kill);
       }
@@ -87,28 +79,31 @@ client.on("messageCreate", async (message) => {
 
     sirali.forEach(([isim, kill], i) => {
       const para = kill * KILL_UCRETI;
-
-      // 🔎 ETİKET BUL
-      const uye = tumUyeler.find(m =>
-        m.displayName.toLowerCase() === isim ||
-        m.user.username.toLowerCase() === isim
-      );
-
-      const etiket = uye ? `<@${uye.id}>` : isim;
-
       const emoji =
         i === 0 ? "🥇" :
         i === 1 ? "🥈" :
         i === 2 ? "🥉" : "🔫";
 
-      sonuc += `${emoji} **${i + 1}.** ${etiket} → **${kill} kill** | 💰 **${para.toLocaleString()}$**\n`;
+      // ✅ ÇÖZÜM 1: Etiket varsa etiketle, yoksa ismi yaz
+      let gosterim = isim;
+
+      const uye = message.guild.members.cache.find(m =>
+        m.displayName.toLowerCase() === isim ||
+        m.user.username.toLowerCase() === isim
+      );
+
+      if (uye) {
+        gosterim = `<@${uye.id}>`;
+      }
+
+      sonuc += `${emoji} **${i + 1}.** ${gosterim} → **${kill} kill** | 💰 **${para.toLocaleString()}$**\n`;
     });
 
-    await message.channel.send(sonuc);
+    message.channel.send(sonuc);
 
   } catch (err) {
-    console.error("❌ BONUS HESAPLAMA HATASI:", err);
-    message.reply("❌ Bir hata oluştu.");
+    console.error("BONUS HESAPLAMA HATASI:", err);
+    message.reply("❌ Bir hata oluştu, loglara bak.");
   }
 });
 
