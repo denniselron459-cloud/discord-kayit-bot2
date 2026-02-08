@@ -55,7 +55,7 @@ const YETKILI_ROL_IDS = [
 /* =========================
    🏛️ STATE CONTROL
 ========================= */
-const STATE_REFERANS_MESAJ_ID = "FURININ_MESAJ_ID";
+const STATE_REFERANS_MESAJ_ID = "1467301119867879454";
 const STATE_KATILIM_UCRETI = 70000;
 const STATE_KILL_UCRETI = 40000;
 
