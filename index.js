@@ -101,7 +101,7 @@ client.on("messageCreate", async (message) => {
 
     const sirali = [...killMap.entries()].sort((a, b) => b[1] - a[1]);
 
-    let sonuc = "🏆 **BizzWar Bonus Sonuçları** 🏆\n\n";
+    let sonuc = "🏆 **BIZZWAR WIN KILLS** 🏆\n\n";
 
     sirali.forEach(([isim, kill], i) => {
       const para = kill * KILL_UCRETI;
