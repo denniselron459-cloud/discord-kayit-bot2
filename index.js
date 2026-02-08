@@ -1,15 +1,17 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 
-// 🔧 İSİM NORMALİZASYONU (ASIL SORUNU ÇÖZEN KISIM)
+// 🔧 İSİM NORMALİZASYONU (HERKES İÇİN)
 function normalizeIsim(str) {
   return str
+    .replace(/[\u200B-\u200D\uFEFF]/g, "") // görünmez karakterler
+    .replace(/\u00A0/g, " ")               // NBSP
     .toLowerCase()
     .trim()
-    .replace(/[^\p{L}\p{N} ]/gu, "") // emoji, nokta, özel karakter sil
-    .replace(/\s+/g, " ");          // fazla boşlukları teke indir
+    .replace(/[^\p{L}\p{N} ]/gu, "")       // emoji, nokta, özel karakter
+    .replace(/\s+/g, " ");                 // fazla boşlukları teke indir
 }
 
-// 🔍 EN YAKIN ÜYE BULMA (NORMALİZE EDEREK)
+// 🔍 EN YAKIN ÜYE BULMA
 function enYakinUyeyiBul(guild, isim) {
   const hedef = normalizeIsim(isim);
 
@@ -67,7 +69,7 @@ client.on("messageCreate", async (message) => {
     // ✅ TÜM ÜYELERİ CACHE'E AL
     await message.guild.members.fetch();
 
-    // 📥 MESAJLARI SAYFALI ÇEK
+    // 📥 MESAJLARI GERİYE DOĞRU ÇEK
     let tumMesajlar = [];
     let lastId;
 
@@ -92,18 +94,33 @@ client.on("messageCreate", async (message) => {
 
     const killMap = new Map();
 
+    // 🔥 SAĞLAM PARSE (EKRAN GÖRÜNTÜLERİNE UYGUN)
     for (const mesaj of tumMesajlar) {
       if (mesaj.createdTimestamp <= referansMesaj.createdTimestamp) continue;
       if (mesaj.author.bot) continue;
 
       for (const satir of mesaj.content.split("\n")) {
-        const eslesme = satir.match(/^(.+?)\s+(\d+)$/);
-        if (!eslesme) continue;
+        const temizSatir = satir
+          .replace(/[\u200B-\u200D\uFEFF]/g, "")
+          .replace(/\u00A0/g, " ")
+          .trim();
 
-        const isim = normalizeIsim(eslesme[1]);
-        const kill = parseInt(eslesme[2]);
+        if (!temizSatir) continue;
+
+        // satırın sonundaki sayıyı al
+        const killMatch = temizSatir.match(/(\d+)\s*$/);
+        if (!killMatch) continue;
+
+        const kill = parseInt(killMatch[1]);
         if (isNaN(kill)) continue;
 
+        const isimParca = temizSatir
+          .slice(0, killMatch.index)
+          .trim();
+
+        if (!isimParca) continue;
+
+        const isim = normalizeIsim(isimParca);
         killMap.set(isim, (killMap.get(isim) || 0) + kill);
       }
     }
