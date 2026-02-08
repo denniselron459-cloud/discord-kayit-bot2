@@ -65,21 +65,27 @@ client.on("messageCreate", async (message) => {
 
     await message.guild.members.fetch();
 
+    // 🔥 GÜVENLİ MESAJ ÇEKME (100 LIMIT FIX)
     let tumMesajlar = [];
-    let lastId;
+    let lastId = null;
+    let bulundu = false;
 
-    while (true) {
-      const fetched = await message.channel.messages.fetch({
-        limit: 100,
-        before: lastId
-      });
+    while (!bulundu) {
+      const options = { limit: 100 };
+      if (lastId) options.before = lastId;
 
+      const fetched = await message.channel.messages.fetch(options);
       if (!fetched.size) break;
 
-      tumMesajlar.push(...fetched.values());
-      lastId = fetched.last().id;
+      for (const msg of fetched.values()) {
+        tumMesajlar.push(msg);
+        if (msg.id === REFERANS_MESAJ_ID) {
+          bulundu = true;
+          break;
+        }
+      }
 
-      if (fetched.has(REFERANS_MESAJ_ID)) break;
+      lastId = fetched.last().id;
     }
 
     const referansMesaj = tumMesajlar.find(m => m.id === REFERANS_MESAJ_ID);
@@ -102,7 +108,7 @@ client.on("messageCreate", async (message) => {
         data.set(yazarIsim, { katilim: 0, kill: 0 });
       }
 
-      // ✅ KATILIM (mesaj başına 1)
+      // ✅ KATILIM
       data.get(yazarIsim).katilim += 1;
 
       const satirlar = mesaj.content.split("\n");
@@ -111,13 +117,10 @@ client.on("messageCreate", async (message) => {
         const temiz = satir.trim();
         if (!temiz) continue;
 
-        /**
-         * 🔥 GELİŞMİŞ KILL REGEX
-         * Ahmet 2k
-         * Ahmet: 2 kills
-         * Ahmet - 2 kill
-         */
-        const match = temiz.match(/^(.+?)[\s:.-]+(\d+)\s*(k|kill|kills)?$/i);
+        // 🔥 KILL ALGILAMA (2k / 2 kill / 2 kills)
+        const match = temiz.match(
+          /^(.+?)[\s:.-]+(\d+)\s*(k|kill|kills)?$/i
+        );
         if (!match) continue;
 
         const isim = normalizeIsim(match[1]);
