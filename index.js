@@ -54,7 +54,10 @@ client.on("messageCreate", async (message) => {
       return message.reply("❌ Bu komutu kullanamazsın.");
     }
 
-    // 📥 SAYFALI MESAJ ÇEKME (limit ASLA 100'ü geçmez)
+    // ✅ EN KRİTİK SATIR (ARDE SORUNUNU %100 ÇÖZER)
+    await message.guild.members.fetch();
+
+    // 📥 SAYFALI MESAJ ÇEKME
     let tumMesajlar = [];
     let lastId;
 
@@ -109,13 +112,13 @@ client.on("messageCreate", async (message) => {
 
       let gosterim = isim;
 
-      // 1️⃣ birebir eşleşme
+      // 1️⃣ birebir
       let uye = message.guild.members.cache.find(m =>
         m.displayName.toLowerCase() === isim ||
         m.user.username.toLowerCase() === isim
       );
 
-      // 2️⃣ en yakın isim (includes)
+      // 2️⃣ en yakın eşleşme
       if (!uye) {
         uye = enYakinUyeyiBul(message.guild, isim);
       }
