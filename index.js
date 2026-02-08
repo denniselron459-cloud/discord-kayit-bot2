@@ -1,6 +1,22 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 
-// 🔍 EN YAKIN ÜYE BULMA
+/* ================== AYARLAR ================== */
+
+// Yetkili rol ID'leri
+const YETKILI_ROL_IDS = [
+  "1432722610667655362",
+  "1454564464727949493"
+];
+
+// Furi'nin yaptığı SON hesaplama mesaj ID'si
+const REFERANS_MESAJ_ID = "1467279907766927588";
+
+// Kill başı ücret
+const KILL_UCRETI = 150000;
+
+/* ============================================= */
+
+// 🔍 En yakın üyeyi bul (isim içerme mantığı)
 function enYakinUyeyiBul(guild, isim) {
   const hedef = isim.toLowerCase();
 
@@ -12,33 +28,27 @@ function enYakinUyeyiBul(guild, isim) {
 
   if (adaylar.size === 0) return null;
 
+  // En kısa isim = en yakın eşleşme
   return adaylar
     .sort((a, b) => a.displayName.length - b.displayName.length)
     .first();
 }
 
+/* ================== CLIENT ================== */
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers // 🔥 ZORUNLU
+    GatewayIntentBits.MessageContent
   ]
 });
-
-// 🔐 Yetkili roller
-const YETKILI_ROL_IDS = [
-  "1432722610667655362",
-  "1454564464727949493"
-];
-
-// 📌 Referans mesaj
-const REFERANS_MESAJ_ID = "1467279907766927588";
-const KILL_UCRETI = 150000;
 
 client.once("ready", () => {
   console.log(`✅ Bot aktif: ${client.user.tag}`);
 });
+
+/* ================== KOMUT ================== */
 
 client.on("messageCreate", async (message) => {
   try {
@@ -46,6 +56,7 @@ client.on("messageCreate", async (message) => {
     if (!message.guild) return;
     if (message.content !== "!bonushesapla") return;
 
+    // 🔒 Yetki kontrolü
     const member = await message.guild.members.fetch(message.author.id);
     const yetkiliMi = member.roles.cache.some(r =>
       YETKILI_ROL_IDS.includes(r.id)
@@ -55,10 +66,10 @@ client.on("messageCreate", async (message) => {
       return message.reply("❌ Bu komutu kullanamazsın.");
     }
 
-    // ✅ TÜM ÜYELERİ CACHE'E AL (ARDE SORUNU %100 ÇÖZÜLDÜ)
+    // ⚠️ KRİTİK: Tüm üyeleri cache'e al (etiket sorunu çözülür)
     await message.guild.members.fetch();
 
-    // 📥 SAYFALI MESAJ ÇEKME (LIMIT ASLA 100'Ü GEÇMEZ)
+    /* ====== MESAJLARI SAYFALI ÇEK ====== */
     let tumMesajlar = [];
     let lastId;
 
@@ -78,9 +89,10 @@ client.on("messageCreate", async (message) => {
 
     const referansMesaj = tumMesajlar.find(m => m.id === REFERANS_MESAJ_ID);
     if (!referansMesaj) {
-      return message.reply("❌ Referans mesaj bulunamadı.");
+      return message.reply("❌ Referans mesaj bulunamadı (ID yanlış olabilir).");
     }
 
+    /* ====== KILL HESAPLAMA ====== */
     const killMap = new Map();
 
     for (const mesaj of tumMesajlar) {
@@ -88,10 +100,15 @@ client.on("messageCreate", async (message) => {
       if (mesaj.author.bot) continue;
 
       for (const satir of mesaj.content.split("\n")) {
-        const eslesme = satir.match(/^(.+?)\s+(\d+)$/);
+        // 🔥 ESNEK REGEX (kill kaybı olmaz)
+        const eslesme = satir.match(/^(.+?)\D+(\d+)\s*$/);
         if (!eslesme) continue;
 
-        const isim = eslesme[1].trim().toLowerCase();
+        const isim = eslesme[1]
+          .toLowerCase()
+          .replace(/[^a-z0-9ğüşöçıi\s]/gi, "")
+          .trim();
+
         const kill = parseInt(eslesme[2]);
         if (isNaN(kill)) continue;
 
@@ -103,29 +120,27 @@ client.on("messageCreate", async (message) => {
       return message.reply("❌ Hesaplanacak kill bulunamadı.");
     }
 
+    /* ====== SIRALA & YAZDIR ====== */
     const sirali = [...killMap.entries()].sort((a, b) => b[1] - a[1]);
 
     let sonuc = "🏆 **BIZZWAR WIN KILLS** 🏆\n\n";
 
     sirali.forEach(([isim, kill], i) => {
       const para = kill * KILL_UCRETI;
+
       const emoji =
         i === 0 ? "🥇" :
         i === 1 ? "🥈" :
         i === 2 ? "🥉" : "🔫";
 
+      // Etiketleme
       let gosterim = isim;
-
-      // 1️⃣ birebir eşleşme
-      let uye = message.guild.members.cache.find(m =>
-        m.displayName.toLowerCase() === isim ||
-        m.user.username.toLowerCase() === isim
-      );
-
-      // 2️⃣ en yakın eşleşme
-      if (!uye) {
-        uye = enYakinUyeyiBul(message.guild, isim);
-      }
+      let uye =
+        message.guild.members.cache.find(m =>
+          m.displayName.toLowerCase() === isim ||
+          m.user.username.toLowerCase() === isim
+        ) ||
+        enYakinUyeyiBul(message.guild, isim);
 
       if (uye) gosterim = `<@${uye.id}>`;
 
@@ -139,5 +154,7 @@ client.on("messageCreate", async (message) => {
     message.reply("❌ Bir hata oluştu, loglara bak.");
   }
 });
+
+/* ================== LOGIN ================== */
 
 client.login(process.env.DISCORD_TOKEN);
