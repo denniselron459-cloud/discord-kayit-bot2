@@ -41,7 +41,7 @@ client.on("messageCreate", async (message) => {
     }
 
     // 📥 Mesajları çek
-    const mesajlar = await message.channel.messages.fetch({ limit: 200 });
+    const mesajlar = await message.channel.messages.fetch({ limit: 100});
 
     const referansMesaj = mesajlar.get(REFERANS_MESAJ_ID);
     if (!referansMesaj) {
