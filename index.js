@@ -1,172 +1,115 @@
-const {
-  Client,
-  GatewayIntentBits,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} = require("discord.js");
-const sqlite3 = require("sqlite3").verbose();
+const { Client, GatewayIntentBits } = require("discord.js");
 
-/* ================== AYARLAR ================== */
-const CHANNEL_ID = "1429871190234628146";
-const MAX_KAYIT = 10;
-/* ============================================= */
-
-if (!process.env.DISCORD_TOKEN) {
-  console.error("❌ DISCORD_TOKEN bulunamadı!");
-  process.exit(1);
-}
-
-/* ================== DATABASE ================== */
-const db = new sqlite3.Database("./kayitlar.db");
-db.run(`
-CREATE TABLE IF NOT EXISTS kayitlar (
-  userId TEXT PRIMARY KEY
-)
-`);
-
-/* ================== CLIENT ================== */
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
-/* ================== GLOBAL ================== */
-let kayitMesajId = null;
-let sonGonderilenSaat = null;
+// 🔐 Yetkili rol ID'leri
+const YETKILI_ROL_IDS = [
+  "1432722610667655362",
+  "1454564464727949493"
+];
 
-/* ================== EMBED (TEMA) ================== */
-function kayitEmbedOlustur(liste, sayi) {
-  return new EmbedBuilder()
-    .setTitle("Informal Registration")
-    .setDescription(
-      `**Current number of people signed up:** ${sayi}/${MAX_KAYIT}\n\n` +
-      (liste || "*No one has signed up yet*")
-    )
-    .setColor(0x2B2D31);
-}
+// 📌 REFERANS MESAJ (Furi'nin yaptığı hesaplama)
+const REFERANS_MESAJ_ID = "1467279907766927588";
 
-/* ================== BUTONLAR ================== */
-function butonlariOlustur(kilitli = false) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("kayit")
-      .setLabel("Register")
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(kilitli),
-    new ButtonBuilder()
-      .setCustomId("kayit_iptal")
-      .setLabel("Cancel")
-      .setStyle(ButtonStyle.Danger)
-      .setDisabled(kilitli)
-  );
-}
+// 💰 Kill başı para
+const KILL_UCRETI = 150000;
 
-/* ================== KAYIT MESAJI ================== */
-async function kayitMesajiGonder(channel) {
-  db.run("DELETE FROM kayitlar");
-
-  const embed = kayitEmbedOlustur(null, 0);
-  const mesaj = await channel.send({
-    embeds: [embed],
-    components: [butonlariOlustur(false)],
-  });
-
-  kayitMesajId = mesaj.id;
-}
-
-/* ================== LİSTE GÜNCELLE ================== */
-async function kayitListesiniGuncelle(channel) {
-  db.all("SELECT userId FROM kayitlar ORDER BY rowid ASC", async (err, rows) => {
-    if (err) return console.error(err);
-
-    const liste =
-      rows.length > 0
-        ? rows.map((u, i) => `${i + 1}. <@${u.userId}>`).join("\n")
-        : null;
-
-    const mesaj = await channel.messages.fetch(kayitMesajId);
-    await mesaj.edit({
-      embeds: [kayitEmbedOlustur(liste, rows.length)],
-      components: [butonlariOlustur(rows.length >= MAX_KAYIT)],
-    });
-  });
-}
-
-/* ================== BOT AÇILDI ================== */
 client.once("ready", () => {
-  console.log(`✅ Bot giriş yaptı: ${client.user.tag}`);
-
-  setInterval(async () => {
-    const now = new Date();
-    const saat = now.getHours();
-    const dakika = now.getMinutes();
-
-    // ⏰ HER SAAT 30 GEÇE AÇ
-    if (dakika === 30 && sonGonderilenSaat !== saat) {
-      const channel = await client.channels.fetch(CHANNEL_ID);
-      await kayitMesajiGonder(channel);
-      sonGonderilenSaat = saat;
-      console.log("📋 Kayıt açıldı");
-    }
-
-    // ⛔ 45'TE KAPAT
-    if (dakika >= 45 && kayitMesajId) {
-      const channel = await client.channels.fetch(CHANNEL_ID);
-      const mesaj = await channel.messages.fetch(kayitMesajId);
-      await mesaj.edit({ components: [butonlariOlustur(true)] });
-      kayitMesajId = null;
-      console.log("⛔ Kayıt kapandı");
-    }
-  }, 60 * 1000);
+  console.log(`✅ Bot aktif: ${client.user.tag}`);
 });
 
-/* ================== BUTON EVENT ================== */
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
+client.on("messageCreate", async (message) => {
+  try {
+    if (message.author.bot) return;
+    if (!message.guild) return;
+    if (!message.content.toLowerCase().startsWith("!bonushesapla")) return;
 
-  if (interaction.message.id !== kayitMesajId) {
-    return interaction.reply({
-      content: "❌ This registration has ended.",
-      ephemeral: true,
-    });
-  }
+    // 🔒 Yetki kontrolü
+    const member = await message.guild.members.fetch(message.author.id);
+    const yetkiliMi = member.roles.cache.some(role =>
+      YETKILI_ROL_IDS.includes(role.id)
+    );
 
-  const userId = interaction.user.id;
+    if (!yetkiliMi) {
+      return message.reply("❌ Bu komutu kullanamazsın.");
+    }
 
-  if (interaction.customId === "kayit") {
-    db.get("SELECT COUNT(*) AS sayi FROM kayitlar", (err, row) => {
-      if (row.sayi >= MAX_KAYIT) {
-        return interaction.reply({
-          content: "❌ Registration is full.",
-          ephemeral: true,
-        });
+    // 👥 TÜM ÜYELERİ AL (etiket için)
+    const tumUyeler = await message.guild.members.fetch();
+
+    // 📥 Son 200 mesaj
+    const mesajlar = await message.channel.messages.fetch({ limit: 200 });
+
+    // 📌 Referans mesaj
+    let referansMesaj = mesajlar.get(REFERANS_MESAJ_ID);
+    if (!referansMesaj) {
+      try {
+        referansMesaj = await message.channel.messages.fetch(REFERANS_MESAJ_ID);
+      } catch {
+        return message.reply("❌ Referans mesaj bulunamadı.");
       }
+    }
 
-      db.run(
-        "INSERT OR IGNORE INTO kayitlar (userId) VALUES (?)",
-        [userId],
-        async () => {
-          await interaction.reply({
-            content: "✅ Registered successfully.",
-            ephemeral: true,
-          });
-          kayitListesiniGuncelle(interaction.channel);
-        }
+    const killMap = new Map();
+
+    for (const mesaj of mesajlar.values()) {
+      if (mesaj.createdTimestamp <= referansMesaj.createdTimestamp) continue;
+      if (mesaj.author.bot) continue;
+
+      const satirlar = mesaj.content.split("\n");
+
+      for (const satir of satirlar) {
+        const eslesme = satir.match(/^(.+?)\s+(\d+)$/);
+        if (!eslesme) continue;
+
+        const isim = eslesme[1].trim().toLowerCase();
+        const kill = parseInt(eslesme[2]);
+
+        killMap.set(isim, (killMap.get(isim) || 0) + kill);
+      }
+    }
+
+    if (killMap.size === 0) {
+      return message.reply("❌ Hesaplanacak kill bulunamadı.");
+    }
+
+    // 🔢 Sırala
+    const sirali = [...killMap.entries()].sort((a, b) => b[1] - a[1]);
+
+    let sonuc = "🏆 **BizzWar Bonus Sonuçları** 🏆\n\n";
+
+    sirali.forEach(([isim, kill], i) => {
+      const para = kill * KILL_UCRETI;
+
+      // 🔎 ETİKET BUL
+      const uye = tumUyeler.find(m =>
+        m.displayName.toLowerCase() === isim ||
+        m.user.username.toLowerCase() === isim
       );
-    });
-  }
 
-  if (interaction.customId === "kayit_iptal") {
-    db.run("DELETE FROM kayitlar WHERE userId = ?", [userId], async () => {
-      await interaction.reply({
-        content: "❌ Registration cancelled.",
-        ephemeral: true,
-      });
-      kayitListesiniGuncelle(interaction.channel);
+      const etiket = uye ? `<@${uye.id}>` : isim;
+
+      const emoji =
+        i === 0 ? "🥇" :
+        i === 1 ? "🥈" :
+        i === 2 ? "🥉" : "🔫";
+
+      sonuc += `${emoji} **${i + 1}.** ${etiket} → **${kill} kill** | 💰 **${para.toLocaleString()}$**\n`;
     });
+
+    await message.channel.send(sonuc);
+
+  } catch (err) {
+    console.error("❌ BONUS HESAPLAMA HATASI:", err);
+    message.reply("❌ Bir hata oluştu.");
   }
 });
 
-/* ================== LOGIN ================== */
 client.login(process.env.DISCORD_TOKEN);
