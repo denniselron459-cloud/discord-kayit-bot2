@@ -1,23 +1,21 @@
+const { Client, GatewayIntentBits } = require("discord.js");
+
+// 🔍 EN YAKIN ÜYE BULMA
 function enYakinUyeyiBul(guild, isim) {
   const hedef = isim.toLowerCase();
 
   let adaylar = guild.members.cache.filter(m => {
     const dn = m.displayName.toLowerCase();
     const un = m.user.username.toLowerCase();
-
     return dn.includes(hedef) || un.includes(hedef);
   });
 
   if (adaylar.size === 0) return null;
 
-  // en kısa ismi olanı seç (en yakın eşleşme)
   return adaylar
-    .sort((a, b) =>
-      a.displayName.length - b.displayName.length
-    )
+    .sort((a, b) => a.displayName.length - b.displayName.length)
     .first();
 }
-const { Client, GatewayIntentBits } = require("discord.js");
 
 const client = new Client({
   intents: [
@@ -27,11 +25,13 @@ const client = new Client({
   ]
 });
 
+// 🔐 Yetkili roller
 const YETKILI_ROL_IDS = [
   "1432722610667655362",
   "1454564464727949493"
 ];
 
+// 📌 Referans mesaj
 const REFERANS_MESAJ_ID = "1467279907766927588";
 const KILL_UCRETI = 150000;
 
@@ -54,7 +54,7 @@ client.on("messageCreate", async (message) => {
       return message.reply("❌ Bu komutu kullanamazsın.");
     }
 
-    // ✅ SAYFALI MESAJ ÇEKME (ASLA 100’Ü GEÇMEZ)
+    // 📥 SAYFALI MESAJ ÇEKME (limit ASLA 100'ü geçmez)
     let tumMesajlar = [];
     let lastId;
 
@@ -108,10 +108,17 @@ client.on("messageCreate", async (message) => {
       const emoji = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔫";
 
       let gosterim = isim;
-      const uye = message.guild.members.cache.find(m =>
+
+      // 1️⃣ birebir eşleşme
+      let uye = message.guild.members.cache.find(m =>
         m.displayName.toLowerCase() === isim ||
         m.user.username.toLowerCase() === isim
       );
+
+      // 2️⃣ en yakın isim (includes)
+      if (!uye) {
+        uye = enYakinUyeyiBul(message.guild, isim);
+      }
 
       if (uye) gosterim = `<@${uye.id}>`;
 
