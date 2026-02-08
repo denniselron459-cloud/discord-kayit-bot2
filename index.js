@@ -55,7 +55,7 @@ const YETKILI_ROL_IDS = [
 /* =========================
    🏛️ STATE CONTROL
 ========================= */
-const STATE_REFERANS_MESAJ_ID = "1467301119867879454";
+const STATE_REFERANS_MESAJ_ID = "FURININ_MESAJ_ID";
 const STATE_KATILIM_UCRETI = 70000;
 const STATE_KILL_UCRETI = 40000;
 
@@ -95,17 +95,17 @@ client.on("messageCreate", async (message) => {
     const referans = tumMesajlar.find(m => m.id === STATE_REFERANS_MESAJ_ID);
     if (!referans) return message.reply("❌ Referans mesaj yok.");
 
-    const katilimMap = new Map(); // isim -> katılım sayısı
-    const killMap = new Map();    // isim -> kill
+    const katilimMap = new Map();
+    const killMap = new Map();
 
     for (const mesaj of tumMesajlar) {
       if (mesaj.createdTimestamp <= referans.createdTimestamp) continue;
       if (mesaj.author.bot) continue;
 
-      let isim =
-        normalizeIsim(mesaj.member?.displayName || mesaj.author.username);
+      const isim = normalizeIsim(
+        mesaj.member?.displayName || mesaj.author.username
+      );
 
-      // katılım +1
       katilimMap.set(isim, (katilimMap.get(isim) || 0) + 1);
 
       for (const satir of mesaj.content.split("\n")) {
@@ -120,8 +120,10 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    let sonuc = "🏛️ **STATE CONTROL SONUÇLARI** 🏛️\n\n";
-    let i = 1;
+    /* =========================
+       📊 SONUÇ HESAPLAMA + SIRALAMA
+    ========================= */
+    const sonucListesi = [];
 
     for (const [isim, katilim] of katilimMap.entries()) {
       const kill = killMap.get(isim) || 0;
@@ -129,16 +131,27 @@ client.on("messageCreate", async (message) => {
         katilim * STATE_KATILIM_UCRETI +
         kill * STATE_KILL_UCRETI;
 
+      sonucListesi.push({ isim, katilim, kill, toplam });
+    }
+
+    sonucListesi.sort((a, b) => b.toplam - a.toplam);
+
+    const siralamaEmoji = ["🥇", "🥈", "🥉"];
+
+    let sonuc = "🏛️ **STATE CONTROL SONUÇLARI** 🏛️\n\n";
+
+    sonucListesi.forEach((veri, index) => {
+      const emoji = siralamaEmoji[index] || `🔹 ${index + 1}.`;
+
       let uye =
         message.guild.members.cache.find(m =>
-          normalizeIsim(m.displayName) === isim ||
-          normalizeIsim(m.user.username) === isim
-        ) || enYakinUyeyiBul(message.guild, isim);
+          normalizeIsim(m.displayName) === veri.isim ||
+          normalizeIsim(m.user.username) === veri.isim
+        ) || enYakinUyeyiBul(message.guild, veri.isim);
 
-      sonuc += `🔹 **${i}.** ${uye ? `<@${uye.id}>` : isim} → `;
-      sonuc += `**${katilim} katılım | ${kill} öldürme : ${toplam.toLocaleString()}$**\n`;
-      i++;
-    }
+      sonuc += `${emoji} ${uye ? `<@${uye.id}>` : veri.isim} → `;
+      sonuc += `**${veri.katilim} katılım | ${veri.kill} öldürme : ${veri.toplam.toLocaleString()}$**\n`;
+    });
 
     await message.channel.send(sonuc);
 
