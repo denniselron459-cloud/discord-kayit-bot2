@@ -11,7 +11,7 @@ function normalizeIsim(str) {
     .replace(/\s+/g, " ");
 }
 
-// 🔍 EN YAKIN ÜYE
+// 🔍 EN YAKIN ÜYE BUL
 function enYakinUyeyiBul(guild, isim) {
   const hedef = normalizeIsim(isim);
 
@@ -21,7 +21,7 @@ function enYakinUyeyiBul(guild, isim) {
     return dn.includes(hedef) || un.includes(hedef);
   });
 
-  if (adaylar.size === 0) return null;
+  if (!adaylar.size) return null;
 
   return adaylar
     .sort((a, b) => a.displayName.length - b.displayName.length)
@@ -42,7 +42,6 @@ const YETKILI_ROL_IDS = [
   "1454564464727949493"
 ];
 
-// 🔴 BURAYI STATE EVENTE GÖRE DEĞİŞTİREBİLİRSİN
 const REFERANS_MESAJ_ID = "1467301119867879454";
 const KATILIM_UCRETI = 70000;
 const KILL_UCRETI = 40000;
@@ -53,16 +52,14 @@ client.once("ready", () => {
 
 client.on("messageCreate", async (message) => {
   try {
-    if (message.author.bot) return;
-    if (!message.guild) return;
-    if (message.content !== "!bonushesapla") return;
+    if (
+      message.author.bot ||
+      !message.guild ||
+      message.content !== "!bonushesapla"
+    ) return;
 
     const member = await message.guild.members.fetch(message.author.id);
-    const yetkiliMi = member.roles.cache.some(r =>
-      YETKILI_ROL_IDS.includes(r.id)
-    );
-
-    if (!yetkiliMi) {
+    if (!member.roles.cache.some(r => YETKILI_ROL_IDS.includes(r.id))) {
       return message.reply("❌ Bu komutu kullanamazsın.");
     }
 
@@ -77,7 +74,7 @@ client.on("messageCreate", async (message) => {
         before: lastId
       });
 
-      if (fetched.size === 0) break;
+      if (!fetched.size) break;
 
       tumMesajlar.push(...fetched.values());
       lastId = fetched.last().id;
@@ -94,8 +91,19 @@ client.on("messageCreate", async (message) => {
     const data = new Map();
 
     for (const mesaj of tumMesajlar) {
-      if (mesaj.createdTimestamp <= referansMesaj.createdTimestamp) continue;
-      if (mesaj.author.bot) continue;
+      if (
+        mesaj.createdTimestamp <= referansMesaj.createdTimestamp ||
+        mesaj.author.bot
+      ) continue;
+
+      const yazarIsim = normalizeIsim(mesaj.author.username);
+
+      if (!data.has(yazarIsim)) {
+        data.set(yazarIsim, { katilim: 0, kill: 0 });
+      }
+
+      // ✅ KATILIM (mesaj başına 1)
+      data.get(yazarIsim).katilim += 1;
 
       const satirlar = mesaj.content.split("\n");
 
@@ -104,36 +112,27 @@ client.on("messageCreate", async (message) => {
         if (!temiz) continue;
 
         /**
-         * 🔥 GELİŞMİŞ REGEX
-         * isim + sayı + (k | kill | kills)
+         * 🔥 GELİŞMİŞ KILL REGEX
+         * Ahmet 2k
+         * Ahmet: 2 kills
+         * Ahmet - 2 kill
          */
-        const match = temiz.match(/^(.+?)\s+(\d+)\s*(k|kill|kills)?$/i);
+        const match = temiz.match(/^(.+?)[\s:.-]+(\d+)\s*(k|kill|kills)?$/i);
         if (!match) continue;
 
         const isim = normalizeIsim(match[1]);
-        let kill = parseInt(match[2]);
+        const kill = parseInt(match[2]);
         if (isNaN(kill)) continue;
 
         if (!data.has(isim)) {
-          data.set(isim, {
-            katilim: 0,
-            kill: 0
-          });
+          data.set(isim, { katilim: 0, kill: 0 });
         }
 
         data.get(isim).kill += kill;
       }
-
-      // 🟢 KATILIM SAY
-      const isim = normalizeIsim(mesaj.author.username);
-      if (!data.has(isim)) {
-        data.set(isim, { katilim: 1, kill: 0 });
-      } else {
-        data.get(isim).katilim += 1;
-      }
     }
 
-    if (data.size === 0) {
+    if (!data.size) {
       return message.reply("❌ Veri bulunamadı.");
     }
 
@@ -148,7 +147,7 @@ client.on("messageCreate", async (message) => {
       sonucList.push({ isim, ...d, para });
     }
 
-    // 🥇 PARAYA GÖRE SIRALA
+    // 🥇 EN ÇOK PARA ALAN ÜSTE
     sonucList.sort((a, b) => b.para - a.para);
 
     let sonuc = "🏆 **STATE CONTROL BONUS** 🏆\n\n";
