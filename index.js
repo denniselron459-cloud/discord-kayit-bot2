@@ -8,16 +8,12 @@ const client = new Client({
   ]
 });
 
-// 🔐 Yetkili rol ID'leri
 const YETKILI_ROL_IDS = [
   "1432722610667655362",
   "1454564464727949493"
 ];
 
-// 📌 Furi'nin hesaplama yaptığı REFERANS mesaj ID
 const REFERANS_MESAJ_ID = "1467279907766927588";
-
-// 💰 Kill başı para
 const KILL_UCRETI = 150000;
 
 client.once("ready", () => {
@@ -30,7 +26,6 @@ client.on("messageCreate", async (message) => {
     if (!message.guild) return;
     if (message.content !== "!bonushesapla") return;
 
-    // 🔒 Yetki kontrolü
     const member = await message.guild.members.fetch(message.author.id);
     const yetkiliMi = member.roles.cache.some(r =>
       YETKILI_ROL_IDS.includes(r.id)
@@ -40,23 +35,36 @@ client.on("messageCreate", async (message) => {
       return message.reply("❌ Bu komutu kullanamazsın.");
     }
 
-    // 📥 Mesajları çek
-    const mesajlar = await message.channel.messages.fetch({ limit: 100});
+    // ✅ SAYFALI MESAJ ÇEKME (ASLA 100’Ü GEÇMEZ)
+    let tumMesajlar = [];
+    let lastId;
 
-    const referansMesaj = mesajlar.get(REFERANS_MESAJ_ID);
+    while (true) {
+      const fetched = await message.channel.messages.fetch({
+        limit: 100,
+        before: lastId
+      });
+
+      if (fetched.size === 0) break;
+
+      tumMesajlar.push(...fetched.values());
+      lastId = fetched.last().id;
+
+      if (fetched.has(REFERANS_MESAJ_ID)) break;
+    }
+
+    const referansMesaj = tumMesajlar.find(m => m.id === REFERANS_MESAJ_ID);
     if (!referansMesaj) {
-      return message.reply("❌ Referans mesaj bulunamadı. ID yanlış olabilir.");
+      return message.reply("❌ Referans mesaj bulunamadı.");
     }
 
     const killMap = new Map();
 
-    for (const mesaj of mesajlar.values()) {
+    for (const mesaj of tumMesajlar) {
       if (mesaj.createdTimestamp <= referansMesaj.createdTimestamp) continue;
       if (mesaj.author.bot) continue;
 
-      const satirlar = mesaj.content.split("\n");
-
-      for (const satir of satirlar) {
+      for (const satir of mesaj.content.split("\n")) {
         const eslesme = satir.match(/^(.+?)\s+(\d+)$/);
         if (!eslesme) continue;
 
@@ -72,34 +80,26 @@ client.on("messageCreate", async (message) => {
       return message.reply("❌ Hesaplanacak kill bulunamadı.");
     }
 
-    // 🔢 Sırala
     const sirali = [...killMap.entries()].sort((a, b) => b[1] - a[1]);
 
     let sonuc = "🏆 **BizzWar Bonus Sonuçları** 🏆\n\n";
 
     sirali.forEach(([isim, kill], i) => {
       const para = kill * KILL_UCRETI;
-      const emoji =
-        i === 0 ? "🥇" :
-        i === 1 ? "🥈" :
-        i === 2 ? "🥉" : "🔫";
+      const emoji = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔫";
 
-      // ✅ ÇÖZÜM 1: Etiket varsa etiketle, yoksa ismi yaz
       let gosterim = isim;
-
       const uye = message.guild.members.cache.find(m =>
         m.displayName.toLowerCase() === isim ||
         m.user.username.toLowerCase() === isim
       );
 
-      if (uye) {
-        gosterim = `<@${uye.id}>`;
-      }
+      if (uye) gosterim = `<@${uye.id}>`;
 
       sonuc += `${emoji} **${i + 1}.** ${gosterim} → **${kill} kill** | 💰 **${para.toLocaleString()}$**\n`;
     });
 
-    message.channel.send(sonuc);
+    await message.channel.send(sonuc);
 
   } catch (err) {
     console.error("BONUS HESAPLAMA HATASI:", err);
