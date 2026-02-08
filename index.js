@@ -4,7 +4,7 @@ const { Client, GatewayIntentBits } = require("discord.js");
 function enYakinUyeyiBul(guild, isim) {
   const hedef = isim.toLowerCase();
 
-  let adaylar = guild.members.cache.filter(m => {
+  const adaylar = guild.members.cache.filter(m => {
     const dn = m.displayName.toLowerCase();
     const un = m.user.username.toLowerCase();
     return dn.includes(hedef) || un.includes(hedef);
@@ -21,7 +21,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers // 🔥 ZORUNLU
   ]
 });
 
@@ -54,10 +55,10 @@ client.on("messageCreate", async (message) => {
       return message.reply("❌ Bu komutu kullanamazsın.");
     }
 
-    // ✅ EN KRİTİK SATIR (ARDE SORUNUNU %100 ÇÖZER)
+    // ✅ TÜM ÜYELERİ CACHE'E AL (ARDE SORUNU %100 ÇÖZÜLDÜ)
     await message.guild.members.fetch();
 
-    // 📥 SAYFALI MESAJ ÇEKME
+    // 📥 SAYFALI MESAJ ÇEKME (LIMIT ASLA 100'Ü GEÇMEZ)
     let tumMesajlar = [];
     let lastId;
 
@@ -108,11 +109,14 @@ client.on("messageCreate", async (message) => {
 
     sirali.forEach(([isim, kill], i) => {
       const para = kill * KILL_UCRETI;
-      const emoji = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔫";
+      const emoji =
+        i === 0 ? "🥇" :
+        i === 1 ? "🥈" :
+        i === 2 ? "🥉" : "🔫";
 
       let gosterim = isim;
 
-      // 1️⃣ birebir
+      // 1️⃣ birebir eşleşme
       let uye = message.guild.members.cache.find(m =>
         m.displayName.toLowerCase() === isim ||
         m.user.username.toLowerCase() === isim
@@ -131,7 +135,7 @@ client.on("messageCreate", async (message) => {
     await message.channel.send(sonuc);
 
   } catch (err) {
-    console.error("BONUS HESAPLAMA HATASI:", err);
+    console.error("❌ BONUS HESAPLAMA HATASI:", err);
     message.reply("❌ Bir hata oluştu, loglara bak.");
   }
 });
