@@ -1,17 +1,21 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 
-// 🔧 İSİM NORMALİZASYONU (HERKES İÇİN)
+/* =========================
+   🔧 İSİM NORMALİZASYONU
+========================= */
 function normalizeIsim(str) {
   return str
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // görünmez karakterler
-    .replace(/\u00A0/g, " ")               // NBSP
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\u00A0/g, " ")
     .toLowerCase()
     .trim()
-    .replace(/[^\p{L}\p{N} ]/gu, "")       // emoji, nokta, özel karakter
-    .replace(/\s+/g, " ");                 // fazla boşlukları teke indir
+    .replace(/[^\p{L}\p{N} ]/gu, "")
+    .replace(/\s+/g, " ");
 }
 
-// 🔍 EN YAKIN ÜYE BULMA
+/* =========================
+   🔍 EN YAKIN ÜYE BULMA
+========================= */
 function enYakinUyeyiBul(guild, isim) {
   const hedef = normalizeIsim(isim);
 
@@ -28,6 +32,9 @@ function enYakinUyeyiBul(guild, isim) {
     .first();
 }
 
+/* =========================
+   🤖 BOT
+========================= */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -37,15 +44,20 @@ const client = new Client({
   ]
 });
 
-// 🔐 Yetkili roller
+/* =========================
+   🔐 YETKİ
+========================= */
 const YETKILI_ROL_IDS = [
   "1432722610667655362",
   "1454564464727949493"
 ];
 
-// 📌 Referans mesaj
-const REFERANS_MESAJ_ID = "1467279907766927588";
-const KILL_UCRETI = 150000;
+/* =========================
+   🏛️ STATE CONTROL
+========================= */
+const STATE_REFERANS_MESAJ_ID = "1467301119867879454";
+const STATE_KATILIM_UCRETI = 70000;
+const STATE_KILL_UCRETI = 40000;
 
 client.once("ready", () => {
   console.log(`✅ Bot aktif: ${client.user.tag}`);
@@ -53,23 +65,17 @@ client.once("ready", () => {
 
 client.on("messageCreate", async (message) => {
   try {
-    if (message.author.bot) return;
-    if (!message.guild) return;
-    if (message.content !== "!bonushesapla") return;
+    if (message.author.bot || !message.guild) return;
+    if (message.content !== "!statehesapla") return;
 
     const member = await message.guild.members.fetch(message.author.id);
     const yetkiliMi = member.roles.cache.some(r =>
       YETKILI_ROL_IDS.includes(r.id)
     );
+    if (!yetkiliMi) return message.reply("❌ Yetkin yok.");
 
-    if (!yetkiliMi) {
-      return message.reply("❌ Bu komutu kullanamazsın.");
-    }
-
-    // ✅ TÜM ÜYELERİ CACHE'E AL
     await message.guild.members.fetch();
 
-    // 📥 MESAJLARI GERİYE DOĞRU ÇEK
     let tumMesajlar = [];
     let lastId;
 
@@ -78,91 +84,67 @@ client.on("messageCreate", async (message) => {
         limit: 100,
         before: lastId
       });
-
       if (fetched.size === 0) break;
 
       tumMesajlar.push(...fetched.values());
       lastId = fetched.last().id;
 
-      if (fetched.has(REFERANS_MESAJ_ID)) break;
+      if (fetched.has(STATE_REFERANS_MESAJ_ID)) break;
     }
 
-    const referansMesaj = tumMesajlar.find(m => m.id === REFERANS_MESAJ_ID);
-    if (!referansMesaj) {
-      return message.reply("❌ Referans mesaj bulunamadı.");
-    }
+    const referans = tumMesajlar.find(m => m.id === STATE_REFERANS_MESAJ_ID);
+    if (!referans) return message.reply("❌ Referans mesaj yok.");
 
-    const killMap = new Map();
+    const katilimMap = new Map(); // isim -> katılım sayısı
+    const killMap = new Map();    // isim -> kill
 
-    // 🔥 SAĞLAM PARSE (EKRAN GÖRÜNTÜLERİNE UYGUN)
     for (const mesaj of tumMesajlar) {
-      if (mesaj.createdTimestamp <= referansMesaj.createdTimestamp) continue;
+      if (mesaj.createdTimestamp <= referans.createdTimestamp) continue;
       if (mesaj.author.bot) continue;
 
+      let isim =
+        normalizeIsim(mesaj.member?.displayName || mesaj.author.username);
+
+      // katılım +1
+      katilimMap.set(isim, (katilimMap.get(isim) || 0) + 1);
+
       for (const satir of mesaj.content.split("\n")) {
-        const temizSatir = satir
-          .replace(/[\u200B-\u200D\uFEFF]/g, "")
-          .replace(/\u00A0/g, " ")
-          .trim();
+        const match = satir.match(/(.+?)\s+(\d+)$/);
+        if (!match) continue;
 
-        if (!temizSatir) continue;
-
-        // satırın sonundaki sayıyı al
-        const killMatch = temizSatir.match(/(\d+)\s*$/);
-        if (!killMatch) continue;
-
-        const kill = parseInt(killMatch[1]);
+        const hedefIsim = normalizeIsim(match[1]);
+        const kill = parseInt(match[2]);
         if (isNaN(kill)) continue;
 
-        const isimParca = temizSatir
-          .slice(0, killMatch.index)
-          .trim();
-
-        if (!isimParca) continue;
-
-        const isim = normalizeIsim(isimParca);
-        killMap.set(isim, (killMap.get(isim) || 0) + kill);
+        killMap.set(hedefIsim, (killMap.get(hedefIsim) || 0) + kill);
       }
     }
 
-    if (killMap.size === 0) {
-      return message.reply("❌ Hesaplanacak kill bulunamadı.");
+    let sonuc = "🏛️ **STATE CONTROL SONUÇLARI** 🏛️\n\n";
+    let i = 1;
+
+    for (const [isim, katilim] of katilimMap.entries()) {
+      const kill = killMap.get(isim) || 0;
+      const toplam =
+        katilim * STATE_KATILIM_UCRETI +
+        kill * STATE_KILL_UCRETI;
+
+      let uye =
+        message.guild.members.cache.find(m =>
+          normalizeIsim(m.displayName) === isim ||
+          normalizeIsim(m.user.username) === isim
+        ) || enYakinUyeyiBul(message.guild, isim);
+
+      sonuc += `🔹 **${i}.** ${uye ? `<@${uye.id}>` : isim} → `;
+      sonuc += `**${katilim} katılım | ${kill} öldürme : ${toplam.toLocaleString()}$**\n`;
+      i++;
     }
-
-    const sirali = [...killMap.entries()].sort((a, b) => b[1] - a[1]);
-
-    let sonuc = "🏆 **BIZZWAR WIN KILLS** 🏆\n\n";
-
-    sirali.forEach(([isim, kill], i) => {
-      const para = kill * KILL_UCRETI;
-      const emoji =
-        i === 0 ? "🥇" :
-        i === 1 ? "🥈" :
-        i === 2 ? "🥉" : "🔫";
-
-      let gosterim = isim;
-
-      // 1️⃣ birebir normalize eşleşme
-      let uye = message.guild.members.cache.find(m =>
-        normalizeIsim(m.displayName) === isim ||
-        normalizeIsim(m.user.username) === isim
-      );
-
-      // 2️⃣ en yakın eşleşme
-      if (!uye) {
-        uye = enYakinUyeyiBul(message.guild, isim);
-      }
-
-      if (uye) gosterim = `<@${uye.id}>`;
-
-      sonuc += `${emoji} **${i + 1}.** ${gosterim} → **${kill} kill** | 💰 **${para.toLocaleString()}$**\n`;
-    });
 
     await message.channel.send(sonuc);
 
   } catch (err) {
-    console.error("❌ BONUS HESAPLAMA HATASI:", err);
-    message.reply("❌ Bir hata oluştu, loglara bak.");
+    console.error(err);
+    message.reply("❌ Hata oluştu.");
   }
 });
 
