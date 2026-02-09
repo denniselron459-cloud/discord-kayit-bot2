@@ -21,18 +21,22 @@ const client = new Client({
 ======================= */
 const YETKILI_ROL_IDS = [
   "1432722610667655362",
-  "1454564464727949493",
-  "1426979504559231117"
+  "1454564464727949493"
 ];
 
-const REFERANS_MESAJ_ID = "1470080051570671880";
+const EVENT_REFERANSLARI = {
+  bizzwar: "1470080051570671880",
+  weaponfactory: "1468000000000000000",
+  foundry: "1469000000000000000"
+};
+
 const KILL_UCRETI = 150000;
 
 /* =======================
-   🧠 GLOBAL STATE
+   🧠 GLOBAL
 ======================= */
-let bonusData = new Map(); 
-// userId => { kill, paid }
+let bonusData = new Map();
+let aktifEvent = null;
 
 /* =======================
    🚀 READY
@@ -46,21 +50,36 @@ client.once("ready", () => {
 ======================= */
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
-  if (message.content !== "!bonushesapla") return;
+  if (!message.content.startsWith("!bonushesapla")) return;
+
+  const args = message.content.split(" ");
+  const event = args[1];
+
+  if (!event || !EVENT_REFERANSLARI[event]) {
+    return message.reply(
+      `❌ Geçersiz event.\nKullanım: \`!bonushesapla ${Object.keys(EVENT_REFERANSLARI).join(" | ")}\``
+    );
+  }
 
   const yetkili = await message.guild.members.fetch(message.author.id);
   if (!yetkili.roles.cache.some(r => YETKILI_ROL_IDS.includes(r.id))) {
     return message.reply("❌ Yetkin yok.");
   }
 
+  aktifEvent = event;
+  bonusData.clear();
+
+  const referansId = EVENT_REFERANSLARI[event];
+  const digerReferanslar = Object.values(EVENT_REFERANSLARI).filter(id => id !== referansId);
+
   /* =======================
      📥 MESAJLARI ÇEK
   ======================= */
   let tumMesajlar = [];
   let lastId = null;
-  let bulundu = false;
+  let dur = false;
 
-  while (!bulundu) {
+  while (!dur) {
     const opt = { limit: 100 };
     if (lastId) opt.before = lastId;
 
@@ -68,17 +87,21 @@ client.on("messageCreate", async (message) => {
     if (!fetched.size) break;
 
     for (const msg of fetched.values()) {
-      if (BigInt(msg.id) <= BigInt(REFERANS_MESAJ_ID)) {
-        bulundu = true;
+      if (digerReferanslar.includes(msg.id)) {
+        dur = true;
         break;
       }
+
+      if (BigInt(msg.id) <= BigInt(referansId)) {
+        dur = true;
+        break;
+      }
+
       tumMesajlar.push(msg);
     }
 
     lastId = fetched.last().id;
   }
-
-  bonusData.clear();
 
   /* =======================
      📊 HESAPLAMA
@@ -102,42 +125,37 @@ client.on("messageCreate", async (message) => {
   }
 
   if (!bonusData.size) {
-    return message.reply("❌ Kill bulunamadı.");
+    return message.reply("❌ Bu event için kanıt bulunamadı.");
   }
 
-  await guncelEmbedGonder(message.channel);
+  await embedGonder(message.channel);
 });
 
 /* =======================
-   📦 EMBED OLUŞTUR
+   📦 EMBED
 ======================= */
-async function guncelEmbedGonder(channel, interaction = null) {
+async function embedGonder(channel, interaction = null) {
   let toplam = 0;
-  let aciklama = "";
+  let desc = "";
 
-  const sirali = [...bonusData.entries()].sort(
-    (a, b) => b[1].kill - a[1].kill
-  );
+  const sirali = [...bonusData.entries()].sort((a, b) => b[1].kill - a[1].kill);
 
   sirali.forEach(([userId, data], i) => {
     const para = data.kill * KILL_UCRETI;
     toplam += para;
 
+    const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔫";
     const durum = data.paid ? "✅ PAID" : "❌ BEKLENİYOR";
-    const medal =
-      i === 0 ? "🥇" :
-      i === 1 ? "🥈" :
-      i === 2 ? "🥉" : "🔫";
 
-    aciklama +=
+    desc +=
       `${medal} <@${userId}>\n` +
       `Kill: **${data.kill}** | Bonus: **${para.toLocaleString()}$**\n` +
       `Durum: ${durum}\n\n`;
   });
 
   const embed = new EmbedBuilder()
-    .setTitle("🏆 BIZZWAR WIN KILLS")
-    .setDescription(aciklama)
+    .setTitle(`🏆 ${aktifEvent.toUpperCase()} SONUÇLARI`)
+    .setDescription(desc)
     .setColor("#2b2d31")
     .setFooter({ text: `💰 Toplam Bonus: ${toplam.toLocaleString()}$` });
 
@@ -176,7 +194,7 @@ client.on("interactionCreate", async (interaction) => {
   if (!bonusData.has(userId)) return;
 
   bonusData.get(userId).paid = true;
-  await guncelEmbedGonder(interaction.channel, interaction);
+  await embedGonder(interaction.channel, interaction);
 });
 
 /* =======================
