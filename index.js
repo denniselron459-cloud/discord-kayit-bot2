@@ -33,10 +33,11 @@ const EVENT_REFERANSLARI = {
 const KILL_UCRETI = 150000;
 
 /* =======================
-   🧠 GLOBAL
+   🧠 STATE
 ======================= */
-let bonusData = new Map();
+let bonusData = new Map(); // userId => { kill, paid }
 let aktifEvent = null;
+let embedMesaj = null; // 👈 TEK MESAJ
 
 /* =======================
    🚀 READY
@@ -68,6 +69,7 @@ client.on("messageCreate", async (message) => {
 
   aktifEvent = event;
   bonusData.clear();
+  embedMesaj = null;
 
   const referansId = EVENT_REFERANSLARI[event];
   const digerReferanslar = Object.values(EVENT_REFERANSLARI).filter(id => id !== referansId);
@@ -75,7 +77,6 @@ client.on("messageCreate", async (message) => {
   /* =======================
      📥 MESAJLARI ÇEK
   ======================= */
-  let tumMesajlar = [];
   let lastId = null;
   let dur = false;
 
@@ -97,31 +98,23 @@ client.on("messageCreate", async (message) => {
         break;
       }
 
-      tumMesajlar.push(msg);
+      if (msg.author.bot) continue;
+
+      for (const satir of msg.content.split("\n")) {
+        const match = satir.match(/<@!?(\d+)>\s+(\d+)/);
+        if (!match) continue;
+
+        const userId = match[1];
+        const kill = parseInt(match[2]);
+
+        if (!bonusData.has(userId)) {
+          bonusData.set(userId, { kill: 0, paid: false });
+        }
+        bonusData.get(userId).kill += kill;
+      }
     }
 
     lastId = fetched.last().id;
-  }
-
-  /* =======================
-     📊 HESAPLAMA
-  ======================= */
-  for (const msg of tumMesajlar) {
-    if (msg.author.bot) continue;
-
-    for (const satir of msg.content.split("\n")) {
-      const match = satir.match(/<@!?(\d+)>\s+(\d+)/);
-      if (!match) continue;
-
-      const userId = match[1];
-      const kill = parseInt(match[2]);
-
-      if (!bonusData.has(userId)) {
-        bonusData.set(userId, { kill: 0, paid: false });
-      }
-
-      bonusData.get(userId).kill += kill;
-    }
   }
 
   if (!bonusData.size) {
@@ -132,13 +125,34 @@ client.on("messageCreate", async (message) => {
 });
 
 /* =======================
-   📦 EMBED
+   📦 EMBED (TEK MESAJ)
 ======================= */
-async function embedGonder(channel, interaction = null) {
+async function embedGonder(channel) {
+  const { embed, row } = embedOlustur();
+
+  if (!embedMesaj) {
+    embedMesaj = await channel.send({
+      embeds: [embed],
+      components: [row]
+    });
+  } else {
+    await embedMesaj.edit({
+      embeds: [embed],
+      components: [row]
+    });
+  }
+}
+
+/* =======================
+   🧱 EMBED BUILDER
+======================= */
+function embedOlustur() {
   let toplam = 0;
   let desc = "";
 
-  const sirali = [...bonusData.entries()].sort((a, b) => b[1].kill - a[1].kill);
+  const sirali = [...bonusData.entries()].sort(
+    (a, b) => b[1].kill - a[1].kill
+  );
 
   sirali.forEach(([userId, data], i) => {
     const para = data.kill * KILL_UCRETI;
@@ -166,17 +180,13 @@ async function embedGonder(channel, interaction = null) {
       row.addComponents(
         new ButtonBuilder()
           .setCustomId(`paid_${userId}`)
-          .setLabel(`Paid → ${userId}`)
+          .setLabel(`Paid`)
           .setStyle(ButtonStyle.Success)
       );
     }
   });
 
-  if (interaction) {
-    await interaction.update({ embeds: [embed], components: [row] });
-  } else {
-    await channel.send({ embeds: [embed], components: [row] });
-  }
+  return { embed, row };
 }
 
 /* =======================
@@ -194,7 +204,8 @@ client.on("interactionCreate", async (interaction) => {
   if (!bonusData.has(userId)) return;
 
   bonusData.get(userId).paid = true;
-  await embedGonder(interaction.channel, interaction);
+  await interaction.deferUpdate();
+  await embedGonder(interaction.channel);
 });
 
 /* =======================
