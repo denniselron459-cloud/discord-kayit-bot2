@@ -4,169 +4,182 @@ const {
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
+  ButtonStyle
 } = require("discord.js");
-const sqlite3 = require("sqlite3").verbose();
 
-/* ================== AYARLAR ================== */
-const CHANNEL_ID = "1429871190234628146";
-const MAX_KAYIT = 10;
-/* ============================================= */
-
-if (!process.env.DISCORD_TOKEN) {
-  console.error("❌ DISCORD_TOKEN bulunamadı!");
-  process.exit(1);
-}
-
-/* ================== DATABASE ================== */
-const db = new sqlite3.Database("./kayitlar.db");
-db.run(`
-CREATE TABLE IF NOT EXISTS kayitlar (
-  userId TEXT PRIMARY KEY
-)
-`);
-
-/* ================== CLIENT ================== */
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
-/* ================== GLOBAL ================== */
-let kayitMesajId = null;
-let sonGonderilenSaat = null;
+/* =======================
+   ⚙️ AYARLAR
+======================= */
+const YETKILI_ROL_IDS = [
+  "1432722610667655362",
+  "1454564464727949493",
+  "1426979504559231117"
+];
 
-/* ================== EMBED (TEMA) ================== */
-function kayitEmbedOlustur(liste, sayi) {
-  return new EmbedBuilder()
-    .setTitle("Informal Registration")
-    .setDescription(
-      `**Current number of people signed up:** ${sayi}/${MAX_KAYIT}\n\n` +
-      (liste || "*No one has signed up yet*")
-    )
-    .setColor(0x2B2D31);
-}
+const REFERANS_MESAJ_ID = "1470080051570671880";
+const KILL_UCRETI = 150000;
 
-/* ================== BUTONLAR ================== */
-function butonlariOlustur(kilitli = false) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("kayit")
-      .setLabel("Register")
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(kilitli),
-    new ButtonBuilder()
-      .setCustomId("kayit_iptal")
-      .setLabel("Cancel")
-      .setStyle(ButtonStyle.Danger)
-      .setDisabled(kilitli)
-  );
-}
+/* =======================
+   🧠 GLOBAL STATE
+======================= */
+let bonusData = new Map(); 
+// userId => { kill, paid }
 
-/* ================== KAYIT MESAJI ================== */
-async function kayitMesajiGonder(channel) {
-  db.run("DELETE FROM kayitlar");
-
-  const embed = kayitEmbedOlustur(null, 0);
-  const mesaj = await channel.send({
-    embeds: [embed],
-    components: [butonlariOlustur(false)],
-  });
-
-  kayitMesajId = mesaj.id;
-}
-
-/* ================== LİSTE GÜNCELLE ================== */
-async function kayitListesiniGuncelle(channel) {
-  db.all("SELECT userId FROM kayitlar ORDER BY rowid ASC", async (err, rows) => {
-    if (err) return console.error(err);
-
-    const liste =
-      rows.length > 0
-        ? rows.map((u, i) => `${i + 1}. <@${u.userId}>`).join("\n")
-        : null;
-
-    const mesaj = await channel.messages.fetch(kayitMesajId);
-    await mesaj.edit({
-      embeds: [kayitEmbedOlustur(liste, rows.length)],
-      components: [butonlariOlustur(rows.length >= MAX_KAYIT)],
-    });
-  });
-}
-
-/* ================== BOT AÇILDI ================== */
+/* =======================
+   🚀 READY
+======================= */
 client.once("ready", () => {
-  console.log(`✅ Bot giriş yaptı: ${client.user.tag}`);
-
-  setInterval(async () => {
-    const now = new Date();
-    const saat = now.getHours();
-    const dakika = now.getMinutes();
-
-    // ⏰ HER SAAT 30 GEÇE AÇ
-    if (dakika === 30 && sonGonderilenSaat !== saat) {
-      const channel = await client.channels.fetch(CHANNEL_ID);
-      await kayitMesajiGonder(channel);
-      sonGonderilenSaat = saat;
-      console.log("📋 Kayıt açıldı");
-    }
-
-    // ⛔ 45'TE KAPAT
-    if (dakika >= 45 && kayitMesajId) {
-      const channel = await client.channels.fetch(CHANNEL_ID);
-      const mesaj = await channel.messages.fetch(kayitMesajId);
-      await mesaj.edit({ components: [butonlariOlustur(true)] });
-      kayitMesajId = null;
-      console.log("⛔ Kayıt kapandı");
-    }
-  }, 60 * 1000);
+  console.log(`✅ Bot aktif: ${client.user.tag}`);
 });
 
-/* ================== BUTON EVENT ================== */
+/* =======================
+   📩 KOMUT
+======================= */
+client.on("messageCreate", async (message) => {
+  if (message.author.bot || !message.guild) return;
+  if (message.content !== "!bonushesapla") return;
+
+  const yetkili = await message.guild.members.fetch(message.author.id);
+  if (!yetkili.roles.cache.some(r => YETKILI_ROL_IDS.includes(r.id))) {
+    return message.reply("❌ Yetkin yok.");
+  }
+
+  /* =======================
+     📥 MESAJLARI ÇEK
+  ======================= */
+  let tumMesajlar = [];
+  let lastId = null;
+  let bulundu = false;
+
+  while (!bulundu) {
+    const opt = { limit: 100 };
+    if (lastId) opt.before = lastId;
+
+    const fetched = await message.channel.messages.fetch(opt);
+    if (!fetched.size) break;
+
+    for (const msg of fetched.values()) {
+      if (BigInt(msg.id) <= BigInt(REFERANS_MESAJ_ID)) {
+        bulundu = true;
+        break;
+      }
+      tumMesajlar.push(msg);
+    }
+
+    lastId = fetched.last().id;
+  }
+
+  bonusData.clear();
+
+  /* =======================
+     📊 HESAPLAMA
+  ======================= */
+  for (const msg of tumMesajlar) {
+    if (msg.author.bot) continue;
+
+    for (const satir of msg.content.split("\n")) {
+      const match = satir.match(/<@!?(\d+)>\s+(\d+)/);
+      if (!match) continue;
+
+      const userId = match[1];
+      const kill = parseInt(match[2]);
+
+      if (!bonusData.has(userId)) {
+        bonusData.set(userId, { kill: 0, paid: false });
+      }
+
+      bonusData.get(userId).kill += kill;
+    }
+  }
+
+  if (!bonusData.size) {
+    return message.reply("❌ Kill bulunamadı.");
+  }
+
+  await guncelEmbedGonder(message.channel);
+});
+
+/* =======================
+   📦 EMBED OLUŞTUR
+======================= */
+async function guncelEmbedGonder(channel, interaction = null) {
+  let toplam = 0;
+  let aciklama = "";
+
+  const sirali = [...bonusData.entries()].sort(
+    (a, b) => b[1].kill - a[1].kill
+  );
+
+  sirali.forEach(([userId, data], i) => {
+    const para = data.kill * KILL_UCRETI;
+    toplam += para;
+
+    const durum = data.paid ? "✅ PAID" : "❌ BEKLENİYOR";
+    const medal =
+      i === 0 ? "🥇" :
+      i === 1 ? "🥈" :
+      i === 2 ? "🥉" : "🔫";
+
+    aciklama +=
+      `${medal} <@${userId}>\n` +
+      `Kill: **${data.kill}** | Bonus: **${para.toLocaleString()}$**\n` +
+      `Durum: ${durum}\n\n`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle("🏆 BIZZWAR WIN KILLS")
+    .setDescription(aciklama)
+    .setColor("#2b2d31")
+    .setFooter({ text: `💰 Toplam Bonus: ${toplam.toLocaleString()}$` });
+
+  const row = new ActionRowBuilder();
+
+  sirali.forEach(([userId, data]) => {
+    if (!data.paid) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`paid_${userId}`)
+          .setLabel(`Paid → ${userId}`)
+          .setStyle(ButtonStyle.Success)
+      );
+    }
+  });
+
+  if (interaction) {
+    await interaction.update({ embeds: [embed], components: [row] });
+  } else {
+    await channel.send({ embeds: [embed], components: [row] });
+  }
+}
+
+/* =======================
+   🖱️ BUTON
+======================= */
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
-  if (interaction.message.id !== kayitMesajId) {
-    return interaction.reply({
-      content: "❌ This registration has ended.",
-      ephemeral: true,
-    });
+  const yetkili = await interaction.guild.members.fetch(interaction.user.id);
+  if (!yetkili.roles.cache.some(r => YETKILI_ROL_IDS.includes(r.id))) {
+    return interaction.reply({ content: "❌ Yetkin yok.", ephemeral: true });
   }
 
-  const userId = interaction.user.id;
+  const [, userId] = interaction.customId.split("_");
+  if (!bonusData.has(userId)) return;
 
-  if (interaction.customId === "kayit") {
-    db.get("SELECT COUNT(*) AS sayi FROM kayitlar", (err, row) => {
-      if (row.sayi >= MAX_KAYIT) {
-        return interaction.reply({
-          content: "❌ Registration is full.",
-          ephemeral: true,
-        });
-      }
-
-      db.run(
-        "INSERT OR IGNORE INTO kayitlar (userId) VALUES (?)",
-        [userId],
-        async () => {
-          await interaction.reply({
-            content: "✅ Registered successfully.",
-            ephemeral: true,
-          });
-          kayitListesiniGuncelle(interaction.channel);
-        }
-      );
-    });
-  }
-
-  if (interaction.customId === "kayit_iptal") {
-    db.run("DELETE FROM kayitlar WHERE userId = ?", [userId], async () => {
-      await interaction.reply({
-        content: "❌ Registration cancelled.",
-        ephemeral: true,
-      });
-      kayitListesiniGuncelle(interaction.channel);
-    });
-  }
+  bonusData.get(userId).paid = true;
+  await guncelEmbedGonder(interaction.channel, interaction);
 });
 
-/* ================== LOGIN ================== */
+/* =======================
+   🔑 LOGIN
+======================= */
 client.login(process.env.DISCORD_TOKEN);
