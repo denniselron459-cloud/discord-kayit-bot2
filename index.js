@@ -4,167 +4,164 @@ const {
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  Events
 } = require("discord.js");
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
 /* =======================
-   🔧 AYARLAR
+   ⚙️ AYARLAR
 ======================= */
+const YETKILI_ROL_IDS = [
+  "1432722610667655362",
+  "1454564464727949493"
+];
 
-const KANIT_KANAL_ID = "KANIT_KANAL_ID_HERE";
-const PAID_YETKILI_ROL = "PAID_YETKILI_ROL_ID";
-
-const EVENT_REFERANSLARI = {
-  bizzwar: "1470080051570671880",
-  weaponfactory: "1468000000000000000",
-  foundry: "1468111111111111111"
-};
-
-const KILL_BONUS = 35000;
+const REFERANS_MESAJ_ID = "1470080051570671880";
+const KILL_UCRETI = 150000;
 
 /* =======================
-   🔧 YARDIMCI
+   🚀 READY
 ======================= */
-
-function formatEventName(event) {
-  return event.toUpperCase().replace(/([A-Z])/g, " $1").trim();
-}
+client.once("ready", () => {
+  console.log(`✅ Bot aktif: ${client.user.tag}`);
+});
 
 /* =======================
-   🧠 KOMUT
+   📩 KOMUT
 ======================= */
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    if (message.author.bot || !message.guild) return;
+    if (message.content !== "!bonushesapla") return;
 
-client.on("messageCreate", async (message) => {
-  if (!message.content.startsWith("!bonushesapla")) return;
-
-  const eventAdi = message.content.split(" ")[1];
-  if (!EVENT_REFERANSLARI[eventAdi]) {
-    return message.reply(
-      "❌ Geçersiz event.\nKullanım: `!bonushesapla bizzwar | weaponfactory | foundry`"
-    );
-  }
-
-  const kanal = await message.guild.channels.fetch(KANIT_KANAL_ID);
-  const referansID = EVENT_REFERANSLARI[eventAdi];
-  const digerReferanslar = Object.values(EVENT_REFERANSLARI).filter(
-    id => id !== referansID
-  );
-
-  let mesajlar = [];
-  let sonID = null;
-  let basladi = false;
-  let dur = false;
-
-  while (!dur) {
-    const fetched = await kanal.messages.fetch({ limit: 100, before: sonID });
-    if (fetched.size === 0) break;
-
-    for (const msg of fetched.values()) {
-      if (msg.id === referansID) {
-        basladi = true;
-        continue;
-      }
-
-      if (!basladi) continue;
-
-      if (digerReferanslar.includes(msg.id)) {
-        dur = true;
-        break;
-      }
-
-      mesajlar.push(msg);
+    const yetkili = await message.guild.members.fetch(message.author.id);
+    if (!yetkili.roles.cache.some(r => YETKILI_ROL_IDS.includes(r.id))) {
+      return message.reply("❌ Bu komutu kullanamazsın.");
     }
 
-    sonID = fetched.last().id;
-  }
+    /* =======================
+       📥 REFERANS ALTINI ÇEK
+    ======================= */
+    let tumMesajlar = [];
+    let lastId = null;
 
-  /* =======================
-     📊 KILL HESAPLAMA
-  ======================= */
+    while (true) {
+      const options = { limit: 100 };
+      if (lastId) options.after = lastId;
+      else options.after = REFERANS_MESAJ_ID;
 
-  const killMap = new Map();
+      const fetched = await message.channel.messages.fetch(options);
+      if (!fetched.size) break;
 
-  for (const msg of mesajlar) {
-    const eslesme = msg.content.match(/(.+?)\s*[:\-]\s*(\d+)\s*kill/i);
-    if (!eslesme) continue;
+      tumMesajlar.push(...fetched.values());
+      lastId = fetched.last().id;
+    }
 
-    const isim = eslesme[1].trim();
-    const kill = parseInt(eslesme[2]);
+    /* =======================
+       📊 KILL TOPLA
+    ======================= */
+    const playerMap = new Map();
 
-    killMap.set(isim, (killMap.get(isim) || 0) + kill);
-  }
+    for (const msg of tumMesajlar) {
+      if (msg.author.bot) continue;
 
-  if (killMap.size === 0) {
-    return message.reply("⚠️ Bu event için kanıt bulunamadı.");
-  }
+      for (const line of msg.content.split("\n")) {
+        const match = line.match(/<@!?(\d+)>\s+(\d+)/);
+        if (!match) continue;
 
-  const sirali = [...killMap.entries()].sort((a, b) => b[1] - a[1]);
+        const userId = match[1];
+        const kill = Number(match[2]);
 
-  let aciklama = sirali
-    .map(([, kill], i) => {
-      const para = kill * KILL_BONUS;
-      return `**${i + 1}.** Kill: **${kill}** — 💰 **${para.toLocaleString()}$**`;
-    })
-    .join("\n");
+        playerMap.set(
+          userId,
+          (playerMap.get(userId) || 0) + kill
+        );
+      }
+    }
 
-  /* =======================
-     🧾 EMBED
-  ======================= */
+    if (!playerMap.size) {
+      return message.reply("❌ Referans altı kill bulunamadı.");
+    }
 
-  const embed = new EmbedBuilder()
-    .setTitle(`🏆 ${formatEventName(eventAdi)} RESULTS`)
-    .setColor("#ffcc00")
-    .setDescription(aciklama)
-    .setFooter({ text: "❌ ÖDENMEDİ" })
-    .setTimestamp();
+    const players = [...playerMap.entries()]
+      .map(([userId, kills]) => ({
+        userId,
+        kills,
+        paid: false
+      }))
+      .sort((a, b) => b.kills - a.kills);
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("paid_" + eventAdi)
-      .setLabel("✅ PAID OLARAK İŞARETLE")
-      .setStyle(ButtonStyle.Success)
-  );
+    /* =======================
+       🧾 EMBED
+    ======================= */
+    const buildEmbed = () => {
+      let toplam = 0;
 
-  await message.channel.send({ embeds: [embed], components: [row] });
-});
+      const desc = players.map((p, i) => {
+        const bonus = p.kills * KILL_UCRETI;
+        toplam += bonus;
 
-/* =======================
-   🔘 PAID BUTONU
-======================= */
+        return `**${i + 1}.** <@${p.userId}>
+🔫 Kill: **${p.kills}**
+💰 Bonus: **${bonus.toLocaleString()}$**
+📌 Durum: ${p.paid ? "✅ **PAID**" : "❌ **Ödenmedi**"}`;
+      }).join("\n\n");
 
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-  if (!interaction.customId.startsWith("paid_")) return;
+      return new EmbedBuilder()
+        .setTitle("🏆 BIZZWAR KILL BONUS DAĞITIMI")
+        .setColor(players.every(p => p.paid) ? "Green" : "Orange")
+        .setDescription(desc)
+        .setFooter({
+          text: `💰 TOPLAM DAĞITILACAK BONUS: ${toplam.toLocaleString()}$`
+        });
+    };
 
-  if (!interaction.member.roles.cache.has(PAID_YETKILI_ROL)) {
-    return interaction.reply({
-      content: "❌ Bu işlem için yetkin yok.",
-      ephemeral: true
+    const buildButtons = () =>
+      players.map((p, i) =>
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`paid_${i}`)
+            .setLabel(`Paid → ${i + 1}`)
+            .setStyle(p.paid ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setDisabled(p.paid)
+        )
+      );
+
+    const sent = await message.channel.send({
+      embeds: [buildEmbed()],
+      components: buildButtons()
     });
-  }
 
-  const embed = EmbedBuilder.from(interaction.message.embeds[0])
-    .setColor("#2ecc71")
-    .setFooter({
-      text: `✅ PAID | ${interaction.user.tag}`
+    /* =======================
+       🟢 BUTTON COLLECTOR
+    ======================= */
+    const collector = sent.createMessageComponentCollector();
+
+    collector.on("collect", async (interaction) => {
+      const index = Number(interaction.customId.split("_")[1]);
+      if (players[index].paid) return interaction.deferUpdate();
+
+      players[index].paid = true;
+
+      await interaction.update({
+        embeds: [buildEmbed()],
+        components: buildButtons()
+      });
     });
 
-  await interaction.update({
-    embeds: [embed],
-    components: []
-  });
+  } catch (err) {
+    console.error("❌ HATA:", err);
+    message.reply("❌ Bir hata oluştu.");
+  }
 });
-
-/* =======================
-   🚀 LOGIN
-======================= */
 
 client.login(process.env.DISCORD_TOKEN);
